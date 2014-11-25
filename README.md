@@ -10,3 +10,4 @@ for OS/application leap second immunity verification.
                    ntpproxy has to run on Linux yet it can be used 
                    to test other OS-es if they utilize NTP
 
+For more information and further details please take a read of the readme.txt
