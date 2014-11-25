@@ -59,8 +59,7 @@ National Institutes of Standards and Technology (NIST)
 ==============
 Compilation is simple like this:
 
-cc -o ntpproxy ntpproxy.c 
-cc -o sls sls.c
+$ make
 
 4. Leap second test bed
 =======================
