@@ -1,6 +1,6 @@
 # Leap Second Test tool
 
-Latest update: 2 May 2014
+Latest update: 10 December 2014
 
 Initial release:  [Robert Karbowski](mailto:rkarbowski@amadeus.com)
 
