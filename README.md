@@ -63,6 +63,14 @@ Compilation is simple like this:
 $ make
 ```
 
+OR
+
+```
+$ gcc -o ntpproxy ntpproxy.c 
+$ gcc -o sls sls.c
+```
+
+
 ## Leap second test bed
 
 The leap second (LS) insertion is actually done by the kernel and NTP only
@@ -77,9 +85,10 @@ A dedicated tool instead was developed: SLS (Set Leap Second):
 
 ```
 # ./sls -h
-Usage: sls [-d seconds] [-l add|del] [-h]
+Usage: sls [-d seconds] [-l add|del] [-s] [-h]
 -d      delay before leap second accomplishment. Default 600 seconds
 -l      add: insert leap second, del: delete leap second. Default add
+-s      leap second flag status
 -h      help
 ```
 

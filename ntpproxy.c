@@ -8,12 +8,21 @@
 // sets leap-indicator flag on the flow
 // from NTP time source to client.
 //
-// 03.05.2013 R. Karbowski - Initial version
-// 20.01.2014 R. Karbowski - Unbuffer stdout for logging
-// 24.01.2014 R. Karbowski - print() with timestamp instead of printf()  
-//                         - logging facility displays client/server IP@-es 
-//                         - dump NTP packet in hex mode  
-//                         - allow only mode 03 client's queries
+// 03.05.2013 ver. 1.0 R. Karbowski  
+//  Initial version
+//
+// 20.01.2014 ver. 1.1 R. Karbowski  
+//  Unbuffer stdout for logging
+//
+// 24.01.2014 ver. 1.2 R. Karbowski 
+//  - print() with timestamp instead of printf()  
+//  - logging facility displays client/server IP@-es 
+//  - dump NTP packet in hex mode  
+//  - allow only mode 03 client's queries
+//
+// 10.12.2014 ver. 1.3 R. Karbowski 
+// - hex dump implemented in internal function
+// - parameters parsing improvement
 //
 //*********************************************
 
@@ -25,8 +34,11 @@
 #include <strings.h>
 #include <libnet.h>
 #include <stdbool.h>
+#include <sys/types.h>
+#include <getopt.h>
 
 #define JAN_1970  2208988800U  // 1970 - 1900 in seconds - shifts system time to NTP one
+#define NRLENGTH 10     // Max number of digits for delay (incl. trailing null byte)
 
 // Default values
 time_t bmidnight=600;   // Number of seconds before midnight (leap second action)
@@ -38,6 +50,7 @@ void printNtp();
 void pparam();
 void usage();
 void print(const char *format,...);
+void hexdump(char buf[], int len);
 
 // Number of days per month
 int dpm[]={31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
@@ -65,6 +78,21 @@ setbuf(stdout, NULL);
 
 // Parse parameters
 pparam(argc, argv);
+
+// Check if caller is root
+if(getuid() != 0)
+{
+ printf("Only \'root\' may launch this program\n\n");
+ usage();
+ exit(1);
+}
+
+// Print parameters
+printf("Entry parameters:\n");
+printf("- source time IP: %s,\n", ntpserverip);
+printf("- delay:          %lds,\n", bmidnight);
+printf("- leapsecond:     %s,\n", ls==1?"add":"delete");
+printf("- verbose:        %s\n\n", verbose?"yes":"no");
 
 // Calculate time offset to be added to current
 // time to reach end of Jun or Dec 23:50
@@ -160,6 +188,7 @@ while(1)
 {
  // Client's query
  srin_tmp_len=sizeof(srin_tmp);
+ bzero((void *) &ntp_hdr, len);
  if((n=recvfrom(ssd,&ntp_hdr,len,0,(struct sockaddr *) &srin_tmp,&srin_tmp_len)) < 0)
  {
   perror("recvfrom(ssd)");
@@ -187,6 +216,7 @@ while(1)
  print("Client's query forwarded to server\n");
 
  // Server's response 
+ bzero((void *) &ntp_hdr, len);
  if((n=read(csd,&ntp_hdr,len)) < 0)
  {
   perror("read(csd)");
@@ -250,6 +280,16 @@ int argc;
 char *argv[];
 {
 int opt, len;
+char strndelay[NRLENGTH];
+static struct option longopts[]=
+{
+ {"source-time", required_argument, NULL, 's'},
+ {"delay",       required_argument, NULL, 'd'},
+ {"leapsecond",  required_argument, NULL, 'l'},
+ {"verbose",     no_argument,       NULL, 'v'},
+ {"help",        no_argument,       NULL, 'h'},
+ {0, 0, 0, 0}
+};
 
 if(argc < 3)
 {
@@ -257,7 +297,7 @@ if(argc < 3)
  exit(1);
 }
 
-while((opt=getopt(argc, argv, "s:d:l:vh")) != -1)
+while((opt=getopt_long(argc, argv, "s:d:l:vh", longopts, NULL)) != -1)
 {
  switch(opt)
  {
@@ -270,11 +310,21 @@ while((opt=getopt(argc, argv, "s:d:l:vh")) != -1)
    exit(1);
   }
   strncpy(ntpserverip,optarg,len);
-  print("ntpserverip=%s\n", ntpserverip);
   break;
  
  case 'd': // Set delay in seconds
-  bmidnight=atoi(optarg);
+  sscanf(optarg, "%ld", &bmidnight);
+  snprintf(strndelay, NRLENGTH, "%ld", bmidnight);
+  if(strcmp(optarg, strndelay) != 0)
+  {
+   memset(strndelay, '9', NRLENGTH-1);
+   strndelay[NRLENGTH-1]=0;
+   printf("Wrong argument for option \'-d\' or value out of range [-%.*s,%s]\n", (NRLENGTH-2), strndelay, strndelay);
+   usage();
+   exit(1);
+  }
+
+//  bmidnight=atoi(optarg);
   break;
  
  case 'l': // Insert/delete leap second 
@@ -316,11 +366,11 @@ while((opt=getopt(argc, argv, "s:d:l:vh")) != -1)
 void usage()
 {
 printf("Usage: ntpproxy -s server_ip [-d seconds] [-l add|del] [-v] [-h]\n");
-printf("-s\tIP of NTP source time server\n");
-printf("-d\tdelay before leap second accomplishment. Default 600 seconds\n");
-printf("-l\tadd: insert leap second, del: delete leap second. Default add\n");
-printf("-v\tdebug information\n");
-printf("-h\thelp\n");
+printf("-s, --source-time IP of NTP source time server\n");
+printf("-d, --delay       delay before leap second accomplishment. Default 600 seconds\n");
+printf("-l, --leapsecond  add: insert leap second, del: delete leap second. Default add\n");
+printf("-v, --verbose     debug information\n");
+printf("-h, --help        display this help\n");
 }
 
 
@@ -337,7 +387,6 @@ register float ff;
 register u_int32_t luf;
 register u_int32_t lf;
 register float lff;
-FILE *pfd;
 
 // leap second
 li=ntp_hdr->ntp_li_vn_mode >> 6;
@@ -387,16 +436,47 @@ lf=lff*1000000000.0;
 printf("TransmitTS=%u.%09d\n", ntohl(ntp_hdr->ntp_xmt_ts.integer), lf);
 
 // Dump hexadecimally NTP packet
-if((pfd=popen("hexdump -Cv","w")) == NULL)
+print("NTP header hex dump:\n");
+hexdump((char *) ntp_hdr, sizeof(struct libnet_ntp_hdr));
+}
+
+//***************************
+// Print hexadecimally 
+//***************************
+void hexdump(char data[], int len)
 {
- perror("popen(hexdump -Cv)");
- exit(1);
+int  caddr=0, rcount, i;
+char buf[16];
+
+while(1)
+{
+ printf("%05x  ", caddr);
+ if((rcount=len-caddr) > 16)
+  rcount=16;
+
+ memcpy(buf, data+caddr, rcount);
+ caddr+=rcount;
+
+ for(i=0; i < rcount; i++)
+  printf("%02x ", buf[i] & 0xff);
+
+ for (; i < 16; i++) 
+  printf("   ");
+ printf("|");
+
+ for(i=0; i < rcount; i++) 
+  if(isgraph(buf[i])) 
+   putchar(buf[i]);
+  else
+   putchar('.');
+
+ printf("|\n");
+
+ if(rcount < 16 || len <= caddr)
+  break;
+}
 }
 
-fwrite(ntp_hdr, 1, sizeof(struct libnet_ntp_hdr), pfd);
-pclose(pfd);
-
-}
 
 //***************************
 // Print info string with
