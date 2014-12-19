@@ -4,7 +4,17 @@
 // Program modifies system time and triggers 
 // execution of 'leap second' by kernel  
 //
-// 02.05.2013 R. Karbowski - Initial version
+// 02.05.2013 ver. 1.0 R. Karbowski 
+//  Initial version
+//
+// 25.11.2014 ver. 1.1 R. Karbowski 
+//  Parameters parsing and diagnostic improvement
+//
+// 09.12.2014 ver. 1.2 R. Karbowski 
+//  Parameters parsing and diagnostic improvement- cont.
+//
+// 11.12.2014 ver. 1.2.1 R. Karbowski 
+//  Fix of bmidnight var. type issue
 //
 //*********************************************
 
@@ -15,12 +25,20 @@
 #include <sys/timex.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdbool.h>
+#include <strings.h>
+#include <sys/types.h>
+#include <getopt.h>
 
 // Default values
 time_t bmidnight=600; // Number of seconds before midnight (leap second action)
 int ls=STA_INS;       // Insert leap second
+bool STATUS=false;    // Print LS status only
 
-void pparam();
+#define NRLENGTH 10   // Max number of digits for delay (incl. trailing null byte)
+
+void pstatus();
+void pparam(int, char **);
 void usage();
 
 int main(argc, argv)
@@ -29,65 +47,74 @@ char *argv[];
 {
 struct timeval tv;
 struct timex tx;
-int rc;
 
 // Parse parameters
 pparam(argc, argv);
+
+// Print leap second flag status and exit
+if(STATUS)
+{
+ pstatus();
+ exit(0);
+}
+
+// Check if caller is root
+if(getuid() != 0)
+{
+ printf("Only \'root\' may modify OS parameters\n");
+ printf("Everyone can use \'-s\' option\n\n");
+ usage();
+ exit(1);
+}
+
+// Print parameters
+printf("Entry parameters: delay %lds, LS %s\n\n", bmidnight, ls==STA_INS?"add":"delete");
 
 // Current time
 gettimeofday(&tv, NULL);
 
 // Next leap second
-tv.tv_sec += 86400 - tv.tv_sec % 86400;
+tv.tv_sec +=86400 - tv.tv_sec % 86400;
 
 // Set the time to be 'bmidnight' seconds before midnight
-tv.tv_sec -= bmidnight;
+tv.tv_sec -=bmidnight;
 settimeofday(&tv, NULL);
 
 // Set leap second flag 
-tx.modes = ADJ_STATUS;
-tx.status = ls;
-if((rc=adjtimex(&tx)) == -1)
+tx.modes=ADJ_STATUS;
+tx.status=ls;
+if(adjtimex(&tx) == -1)
 {
- perror("adjtimex()");
+ perror("adjtimex(1)");
  exit(1);
 }
-else
-{
- printf("Program finished successfully:\n");
- switch(rc)
- {
- case TIME_OK:
-  printf("clock synchronized\n");
-  break;
-
- case TIME_INS:
-  printf("insert leap second\n");
-  break;
-
- case TIME_DEL:
-  printf("delete leap second\n");
-  break;
-
- case TIME_OOP:
-  printf("leap second in progress\n");
-  break;
-
- case TIME_WAIT:
-  printf("leap second has occurred\n");
-  break;
-
- case TIME_BAD:
-  printf("clock not synchronized\n");
-  break;
-
- default:
-  printf("adjtimex(): unexpected return code value however not an error\n");
-  break;
- }
+printf("Finished: ");
+pstatus();
+exit(0);
 }
 
-exit(0);
+//*************************
+//  Print LS flag status
+//*************************
+void pstatus()
+{
+struct timex tx;
+
+tx.modes=0;
+if(adjtimex(&tx) == -1)
+{
+ perror("adjtimex(2)");
+ exit(1);
+}
+
+printf("Kernel leap second flag: ");
+if(tx.status & STA_INS)
+ printf("add\n");
+else 
+ if(tx.status & STA_DEL)
+  printf("delete\n"); 
+ else
+  printf("not set\n");
 }
 
 //*************************
@@ -98,16 +125,38 @@ int argc;
 char *argv[];
 {
 int opt;
+char strndelay[NRLENGTH];
+bool RMOD=false;      // Request OS modification (if option -l or -d was used)
+static struct option longopts[]= 
+{
+ {"delay",      required_argument, NULL, 'd'},
+ {"leapsecond", required_argument, NULL, 'l'},
+ {"status",     no_argument,       NULL, 's'},
+ {"help",       no_argument,       NULL, 'h'},
+ {0, 0, 0, 0}
+};
 
-while((opt=getopt(argc, argv, "d:l:h")) != -1)
+while((opt=getopt_long(argc, argv, "d:l:sh", longopts, NULL)) != -1)
 {
  switch(opt)
  {
  case 'd': // Set delay in seconds
-  bmidnight=atoi(optarg);
+  RMOD=true;
+  sscanf(optarg, "%ld", &bmidnight);
+  bmidnight=abs(bmidnight);
+  snprintf(strndelay, NRLENGTH, "%ld", bmidnight);
+  if(strcmp(optarg, strndelay) != 0)
+  {
+   memset(strndelay, '9', NRLENGTH-1);
+   strndelay[NRLENGTH-1]=0;
+   printf("Wrong argument for option \'-d\' or value out of range [0-%s]\n", strndelay);
+   usage();
+   exit(1);
+  }
   break;
  
  case 'l': // Insert/delete leap second 
+  RMOD=true;
   if(strncmp(optarg, "add", 3) == 0)
    {
    ls=STA_INS;
@@ -119,12 +168,16 @@ while((opt=getopt(argc, argv, "d:l:h")) != -1)
    ls=STA_DEL;
    break;
    }
-  
+ 
   printf("Wrong argument for option \'-l\'\n");
   usage();
   exit(1);
   break;
  
+ case 's': // LS flag status only
+  STATUS=true;
+  break;
+
  case 'h':
  default:
   usage();
@@ -133,6 +186,12 @@ while((opt=getopt(argc, argv, "d:l:h")) != -1)
  }
 }
 
+if(STATUS && RMOD)
+{
+ printf("Options -l/-d and -s are mutually exclusive\n\n");
+ usage();
+ exit(1);
+}
 }
 
 //*************************
@@ -140,10 +199,11 @@ while((opt=getopt(argc, argv, "d:l:h")) != -1)
 //*************************
 void usage()
 {
-printf("Usage: sls [-d seconds] [-l add|del] [-h]\n");
-printf("-d\tdelay before leap second accomplishment. Default 600 seconds\n");
-printf("-l\tadd: insert leap second, del: delete leap second. Default add\n");
-printf("-h\thelp\n");
+printf("Usage: sls [[[-d seconds] [-l add|del]] | [-s] | [-h]]\n");
+printf("-d, --delay       delay before leap second accomplishment. Default 600 seconds\n");
+printf("-l, --leapsecond  add: insert leap second, del: delete leap second. Default add\n");
+printf("-s, --status      leap second flag status\n");
+printf("-h, --help        display this help\n");
 }
 
 
