@@ -115,6 +115,13 @@ Status: 80
 LS is INS
 ```
 
+or run 
+
+```
+# ./sls -s
+Kernel leap second flag: add
+```
+
 ###### Reset kernel time status
 
 useful if SLS has to be rerun without waiting for scheduled LS event
@@ -263,6 +270,13 @@ print "LS is OFF"}'
 Status: 80
 LS is INS
 ```
+or run
+
+```
+# ./sls -s
+Kernel leap second flag: add
+```
+
 
 ###### Reset kernel time status
 
