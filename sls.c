@@ -16,6 +16,9 @@
 // 11.12.2014 ver. 1.2.1 R. Karbowski 
 //  Fix of bmidnight var. type issue
 //
+// 01.05.2015 ver. 1.3 R. Karbowski 
+//  Clear time state before applying LS
+//
 //*********************************************
 
 #include <stdlib.h>
@@ -80,12 +83,29 @@ tv.tv_sec +=86400 - tv.tv_sec % 86400;
 tv.tv_sec -=bmidnight;
 settimeofday(&tv, NULL);
 
+// Clear time state before applying LS
+tx.modes=ADJ_STATUS;
+tx.status=STA_PLL;
+if(adjtimex(&tx) == -1)
+{
+ perror("adjtimex(1)");
+ exit(1);
+}
+
+tx.modes=ADJ_STATUS;
+tx.status=0x0;
+if(adjtimex(&tx) == -1)
+{
+ perror("adjtimex(2)");
+ exit(1);
+}
+
 // Set leap second flag 
 tx.modes=ADJ_STATUS;
 tx.status=ls;
 if(adjtimex(&tx) == -1)
 {
- perror("adjtimex(1)");
+ perror("adjtimex(3)");
  exit(1);
 }
 printf("Finished: ");
@@ -103,7 +123,7 @@ struct timex tx;
 tx.modes=0;
 if(adjtimex(&tx) == -1)
 {
- perror("adjtimex(2)");
+ perror("adjtimex(4)");
  exit(1);
 }
 
