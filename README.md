@@ -121,6 +121,12 @@ or run
 # ./sls -s
 Kernel leap second flag: add
 ```
+or
+
+```
+# ntptime | grep status
+  status 0x50 (INS,UNSYNC),
+```
 
 ###### Reset kernel time status
 
@@ -128,6 +134,10 @@ useful if SLS has to be rerun without waiting for scheduled LS event
 
 ```
 # adjtimex -S 0
+```
+or
+```
+# ntptime -s 0
 ```
 
 When LS is applied, in `/var/log/messages` entries are logged:
@@ -276,6 +286,12 @@ or run
 # ./sls -s
 Kernel leap second flag: add
 ```
+or
+
+```
+# ntptime | grep status
+  status 0x50 (INS,UNSYNC),
+```
 
 
 ###### Reset kernel time status
@@ -284,6 +300,10 @@ Uuseful if NTP PROXY has to be rerun without waiting for scheduled LS event:
 
 ```
 # adjtimex -S 0
+```
+or
+```
+# ntptime -s 0
 ```
 
 When LS is applied, in `/var/log/messages` entries are logged:
